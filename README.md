@@ -50,6 +50,7 @@ Training labels (`train.csv`):
 | 18325926 | Party One "MR.K.Kuttan" keeps the title every other label drops | K.Kuttan |
 | 6683127, 6683129 | "GERALDINE Q." and "Ingles, Jr." only appear in the signature lines of the full contract; the page-1 file never contains them. Both contracts name the parties as "GERALDINE O. GALINATO" and "Ingles. Jr." | Copied the names as the contracts write them |
 | 54770958 | "Deepthi" and "Ramesh K.N"; the scan writes "Deepti" and "Ramesh.K.N" everywhere, signatures included | Copied as written |
+| 54770958 | Start 21.04.2011 and end 19.02.2012 aren't in the scan. The only date is "executed on 20 April 2011", and the term is "11 months from the date of Tenancy" with no tenancy date given | Left empty, which is what the document supports |
 
 With the original labels, the scores were 91.7% on test and 71.4% on the 7 training documents I could use (50% on all 10 rows as given).
 
@@ -58,14 +59,12 @@ Recall with the corrected labels (each training document is scored with itself r
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | LLM, test | 100% | 100% | 100% | 100% | 100% | 100% | **100%** |
-| LLM, train (8 readable docs) | 100% | 87.5% | 87.5% | 100% | 100% | 100% | **95.8%** |
-| LLM, train (all 9 labelled docs) | 88.9% | 77.8% | 77.8% | 100% | 88.9% | 100% | **88.9%** |
+| LLM, train (8 readable docs) | 100% | 100% | 100% | 100% | 100% | 100% | **100%** |
+| LLM, train (all 9 labelled docs) | 88.9% | 88.9% | 88.9% | 100% | 88.9% | 100% | **92.6%** |
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
-| QA baseline, train (8 readable docs) | 75% | 12.5% | 12.5% | 0% | 0% | 0% | 16.7% |
+| QA baseline, train (8 readable docs) | 75% | 12.5% | 25% | 0% | 0% | 0% | 18.8% |
 
-**On every field the documents actually contain, training is 100% too.** The 6 remaining misses are all answers that aren't in the document, so there is nothing for the model to read:
-- **44737744 (4 misses).** The Word file is itself bad OCR text: the rent reads "Rs 9.99.7.9°" and the dates aren't there. The labels are probably right, so I left them, and "readable" leaves this file out.
-- **54770958 (2 misses).** The label says 21.04.2011 to 19.02.2012, but the scan never gives those dates. The only date in it is "executed on 20 April 2011", and the term is "11 months from the date of Tenancy" with no tenancy date. The model correctly leaves both fields empty rather than guessing. I left the label as given, so these count as misses in the table above.
+**Training is 100% on every document the model can read.** The only misses are the 4 on `44737744`, whose Word file is itself bad OCR text: the rent reads "Rs 9.99.7.9°" and the dates aren't there. Its labels are probably right, so I left them, and "readable" leaves this file out.
 
 Once the labels were fixed, two misses on 18325926 were genuinely the model's. It kept the father's name ("K.Kuttan S/o Kelu Aehari (Late)"), and it worked out an end date itself (30.11.2009) when the agreement only says "eleven months". The prompt already had rules for both, so I made them more explicit: the end date is copied only when the document writes it, and the name rule now lists the relation markers (S/o, D/o, W/o, ...) with one short example. That fixed both, and test stayed at 100%.
 
