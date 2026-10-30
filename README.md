@@ -63,9 +63,9 @@ Recall with the corrected labels (each training document is scored with itself r
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
 | QA baseline, train (8 readable docs) | 75% | 12.5% | 12.5% | 0% | 0% | 0% | 16.7% |
 
-The 6 remaining training misses come from two data problems:
+**On every field the documents actually contain, training is 100% too.** The 6 remaining misses are all answers that aren't in the document, so there is nothing for the model to read:
 - **44737744 (4 misses).** The Word file is itself bad OCR text: the rent reads "Rs 9.99.7.9°" and the dates aren't there. The labels are probably right, so I left them, and "readable" leaves this file out.
-- **54770958 (2 misses).** The label says 21.04.2011 to 19.02.2012, but the scan never states a tenancy start date, so there is nothing to check it against. I left it as given.
+- **54770958 (2 misses).** The label says 21.04.2011 to 19.02.2012, but the scan never gives those dates. The only date in it is "executed on 20 April 2011", and the term is "11 months from the date of Tenancy" with no tenancy date. The model correctly leaves both fields empty rather than guessing. I left the label as given, so these count as misses in the table above.
 
 Once the labels were fixed, two misses on 18325926 were genuinely the model's. It kept the father's name ("K.Kuttan S/o Kelu Aehari (Late)"), and it worked out an end date itself (30.11.2009) when the agreement only says "eleven months". The prompt already had rules for both, so I made them more explicit: the end date is copied only when the document writes it, and the name rule now lists the relation markers (S/o, D/o, W/o, ...) with one short example. That fixed both, and test stayed at 100%.
 
