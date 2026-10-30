@@ -63,7 +63,7 @@ Recall with the corrected labels (each training document is scored with itself r
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
 | QA baseline, train (8 readable docs) | 75% | 12.5% | 12.5% | 0% | 0% | 0% | 16.7% |
 
-The 6 remaining training misses are both data problems:
+The 6 remaining training misses come from two data problems:
 - **44737744 (4 misses).** The Word file is itself bad OCR text: the rent reads "Rs 9.99.7.9°" and the dates aren't there. The labels are probably right, so I left them, and "readable" leaves this file out.
 - **54770958 (2 misses).** The label says 21.04.2011 to 19.02.2012, but the scan never states a tenancy start date, so there is nothing to check it against. I left it as given.
 
