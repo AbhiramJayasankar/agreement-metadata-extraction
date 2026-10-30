@@ -3,26 +3,26 @@ Strict recall
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | LLM test | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
-| LLM train usable | 85.7% | 85.7% | 42.9% | 100.0% | 42.9% | 71.4% | 71.4% |
-| LLM train as provided | 60.0% | 60.0% | 30.0% | 70.0% | 30.0% | 50.0% | 50.0% |
+| LLM train | 88.9% | 77.8% | 66.7% | 100.0% | 77.8% | 100.0% | 85.2% |
+| LLM train readable | 100.0% | 87.5% | 75.0% | 100.0% | 87.5% | 100.0% | 91.7% |
 | QA test | 75.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 12.5% |
-| QA train usable | 57.1% | 14.3% | 14.3% | 14.3% | 0.0% | 0.0% | 16.7% |
+| QA train readable | 75.0% | 12.5% | 12.5% | 0.0% | 0.0% | 0.0% | 16.7% |
 
 Lenient recall
 
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | LLM test | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% | 100.0% |
-| LLM train usable | 85.7% | 85.7% | 42.9% | 100.0% | 85.7% | 71.4% | 78.6% |
-| LLM train as provided | 60.0% | 60.0% | 30.0% | 70.0% | 60.0% | 50.0% | 55.0% |
+| LLM train | 88.9% | 77.8% | 66.7% | 100.0% | 88.9% | 100.0% | 87.0% |
+| LLM train readable | 100.0% | 87.5% | 75.0% | 100.0% | 87.5% | 100.0% | 91.7% |
 | QA test | 75.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 12.5% |
-| QA train usable | 57.1% | 14.3% | 14.3% | 14.3% | 0.0% | 0.0% | 16.7% |
+| QA train readable | 75.0% | 12.5% | 12.5% | 0.0% | 0.0% | 0.0% | 16.7% |
 
 - Strict recall strips leading/trailing spaces; lenient recall also ignores case, spaces and punctuation. Empty answers match empty labels.
-- Train usable has 7 rows: 24158401 is missing; 54770958 and 54945838 have swapped labels. Unlabeled 46239065 is excluded from both views. Train as provided has all 10 CSV rows; test has all 4.
-- test.csv has two corrected labels: 228094620 Party Two (.B.Kishore -> B.Kishore; the document reads "Mr.B.Kishore") and 95980236 end date (31.03.2011 -> 28.02.2011; 11 months from 1st April 2010).
-- Training labels are scored as given, including impossible dates such as 31.02.2011.
+- Train has 9 rows (unlabelled 46239065 is not scored); train readable leaves out 44737744, whose Word file is unreadable OCR text. Test has all 4.
+- Labels were corrected where they contradict the document; README.md lists every change. Train: swapped rows 54770958/54945838 put back, 24158401 removed (its file is in test/), impossible end dates fixed, names copied as the documents write them.
+- test.csv: 228094620 Party Two (.B.Kishore -> B.Kishore) and 95980236 end date (31.03.2011 -> 28.02.2011).
 - The prompt holds two training documents as examples; a training document is never its own example.
 - QA answers are spans copied from the text, so it cannot produce computed end dates or notice in days.
-- LLM Qwen/Qwen3.5-4B (nf4, GPU): mean 8.55 seconds/document, excluding model loading.
-- Text preparation (glm OCR and DOCX, including cache reads): 8.50 seconds, before LLM loading.
+- LLM Qwen/Qwen3.5-4B (nf4, GPU): mean 9.10 seconds/document, excluding model loading.
+- Text preparation (glm OCR and DOCX, including cache reads): 5.65 seconds, before LLM loading.

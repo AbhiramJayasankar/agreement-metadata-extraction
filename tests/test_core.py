@@ -4,7 +4,7 @@ from docx import Document
 import pytest
 
 from metadata_extractor.dataset import files_by_stem, read_labels, write_predictions
-from metadata_extractor.evaluate import recall_rows, usable_labels
+from metadata_extractor.evaluate import readable_labels, recall_rows
 from metadata_extractor.fields import CSV_COLUMNS, FACT_KEYS, clean_party, facts_to_fields, format_answer, infer_end_date
 from metadata_extractor.llm import EXAMPLES, parse_json_object, select_examples
 from metadata_extractor.text import extract_text
@@ -118,9 +118,9 @@ def test_examples_are_leave_one_out():
         assert all(set(item["facts"]) == set(FACT_KEYS) for item in selected)
 
 
-def test_usable_view_excludes_only_known_alignment_errors():
-    names = ["24158401-Rental-Agreement", "54770958-Rental-Agreement", "54945838-Rental-Agreement", "18325926-Rental-Agreement-1"]
-    assert usable_labels([{"File Name": name} for name in names]) == [{"File Name": names[-1]}]
+def test_readable_view_excludes_only_the_garbled_document():
+    names = ["44737744-Maddireddy-Bhargava-Reddy-Rental-Agreement", "54770958-Rental-Agreement", "18325926-Rental-Agreement-1"]
+    assert readable_labels([{"File Name": name} for name in names]) == [{"File Name": name} for name in names[1:]]
 
 
 def test_gold_dates_are_not_validated_or_repaired(tmp_path):
@@ -137,6 +137,9 @@ def test_gold_dates_are_not_validated_or_repaired(tmp_path):
     ("Drona Rao", "Drona Rao"), ("Mrinal Sen", "Mrinal Sen"),
     ("K. Parthasarathy", "K. Parthasarathy"), ("", ""),
     (" shRI. A.B,;: ", "A.B"), ("Dr Mr. Name", "Mr. Name"),
+    ("Mrs.Asha Ramesh & Mr.Ramesh.K.N", "Asha Ramesh & Ramesh.K.N"),
+    ("Antonio Levy S. Ingles. Jr. and/or Mrs. Mary Rose C. Ingles", "Antonio Levy S. Ingles. Jr. and/or Mary Rose C. Ingles"),
+    ("Ramesh and Mrinal Sen", "Ramesh and Mrinal Sen"),
 ])
 def test_clean_party(name, expected):
     assert clean_party(name) == expected

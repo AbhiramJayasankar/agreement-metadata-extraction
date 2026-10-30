@@ -1,4 +1,4 @@
-"""Per-field recall for the supplied and usable training sets and the test set."""
+"""Per-field recall for the training set, its readable documents, and the test set."""
 
 import argparse
 import csv
@@ -12,15 +12,11 @@ from .fields import CSV_COLUMNS, FIELDS, FIELD_TO_COLUMN
 from .predict import make_extractor, predict_file, prepare_texts
 from .llm import DEFAULT_MODEL
 
-USABLE_EXCLUSIONS = {
-    "24158401-Rental-Agreement",
-    "54770958-Rental-Agreement",
-    "54945838-Rental-Agreement",
-}
+UNREADABLE = {"44737744-Maddireddy-Bhargava-Reddy-Rental-Agreement"}
 
 
-def usable_labels(labels: list[dict[str, str]]) -> list[dict[str, str]]:
-    return [row for row in labels if row["File Name"] not in USABLE_EXCLUSIONS]
+def readable_labels(labels: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [row for row in labels if row["File Name"] not in UNREADABLE]
 
 
 def lenient(value: str) -> str:
@@ -64,7 +60,7 @@ def evaluate_split(split: str, method: str, extractor, data_dir: Path, output_di
     files = files_by_stem(data_dir / split)
     labels = read_labels(data_dir / "train.csv") if split == "train" else None
     if labels is not None and method == "qa":
-        labels = usable_labels(labels)
+        labels = readable_labels(labels)
     stems = [row["File Name"] for row in labels] if labels is not None else list(files)
     predictions, timings, missing = [], [], set()
     for stem in stems:
@@ -81,10 +77,10 @@ def evaluate_split(split: str, method: str, extractor, data_dir: Path, output_di
     scores, mistakes = recall_rows(labels, predictions, missing)
     views = {}
     if split == "train":
-        usable_scores, _ = recall_rows(usable_labels(labels), predictions, missing)
-        views[f"{method.upper()} train usable"] = usable_scores
+        readable_scores, _ = recall_rows(readable_labels(labels), predictions, missing)
+        views[f"{method.upper()} train readable"] = readable_scores
         if method == "llm":
-            views["LLM train as provided"] = scores
+            views["LLM train"] = scores
     else:
         views[f"{method.upper()} test"] = scores
     if method == "llm":
@@ -98,7 +94,7 @@ def evaluate_split(split: str, method: str, extractor, data_dir: Path, output_di
 
 def write_results(output_dir: Path, results: dict[str, list[dict]], timings: list[float], model: str, device: str, quantization: str, text_seconds: float = 0, ocr_engine: str = "glm") -> None:
     lines = []
-    order = ("LLM test", "LLM train usable", "LLM train as provided", "QA test", "QA train usable")
+    order = ("LLM test", "LLM train", "LLM train readable", "QA test", "QA train readable")
     for title, metric in (("Strict recall", "Recall"), ("Lenient recall", "Lenient Recall")):
         lines.extend([title, "", "| Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |",
                       "|---|---:|---:|---:|---:|---:|---:|---:|"])
@@ -111,9 +107,9 @@ def write_results(output_dir: Path, results: dict[str, list[dict]], timings: lis
     mean_seconds = f"{sum(timings) / len(timings):.2f}" if timings else "n/a"
     lines.extend([
         "- Strict recall strips leading/trailing spaces; lenient recall also ignores case, spaces and punctuation. Empty answers match empty labels.",
-        "- Train usable has 7 rows: 24158401 is missing; 54770958 and 54945838 have swapped labels. Unlabeled 46239065 is excluded from both views. Train as provided has all 10 CSV rows; test has all 4.",
-        "- test.csv has two corrected labels: 228094620 Party Two (.B.Kishore -> B.Kishore; the document reads \"Mr.B.Kishore\") and 95980236 end date (31.03.2011 -> 28.02.2011; 11 months from 1st April 2010).",
-        "- Training labels are scored as given, including impossible dates such as 31.02.2011.",
+        "- Train has 9 rows (unlabelled 46239065 is not scored); train readable leaves out 44737744, whose Word file is unreadable OCR text. Test has all 4.",
+        "- Labels were corrected where they contradict the document; README.md lists every change. Train: swapped rows 54770958/54945838 put back, 24158401 removed (its file is in test/), impossible end dates fixed, names copied as the documents write them.",
+        "- test.csv: 228094620 Party Two (.B.Kishore -> B.Kishore) and 95980236 end date (31.03.2011 -> 28.02.2011).",
         "- The prompt holds two training documents as examples; a training document is never its own example.",
         "- QA answers are spans copied from the text, so it cannot produce computed end dates or notice in days.",
         f"- LLM {model} ({quantization}, {'GPU' if device == 'cuda' else 'CPU'}): mean {mean_seconds} seconds/document, excluding model loading.",

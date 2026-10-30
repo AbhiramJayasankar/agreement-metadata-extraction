@@ -44,7 +44,7 @@ EXAMPLES = (
             "monthly_rent": "6500", "start_date": "20.05.2007", "end_date": "20.05.2008",
             "term_months": "", "notice_amount": "15", "notice_unit": "days",
             "lessor": "Antonio Levy S. Ingles. Jr. and/or Mary Rose C. Ingles",
-            "lessee": "GERALDINE Q. GALINATO",
+            "lessee": "GERALDINE O. GALINATO",
         },
     },
 )

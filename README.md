@@ -29,26 +29,46 @@ Per-field recall = exact matches / number of documents (4 test documents).
 
 Predictions are in [`outputs/test_predictions.csv`](outputs/test_predictions.csv).
 
-**I corrected two labels in `test.csv`.** When I checked every miss against the documents, two test labels turned out to be wrong:
+**The labels had errors, and I fixed them.** The dataset looks deliberately messy, so I checked every miss against its document. Where a label contradicts the document, I corrected it in the CSV. Where the document simply doesn't contain the answer, I left the label alone.
+
+Test labels (`test.csv`):
 
 | Document | Field | Original label | Corrected to | What the document says |
 |---|---|---|---|---|
 | 228094620 | Party Two | .B.Kishore | B.Kishore | "Mr.B.Kishore". Whoever labelled it removed "Mr" and left the dot behind. |
 | 95980236 | End date | 31.03.2011 | 28.02.2011 | "11 (Eleven) months commencing from 1st April 2010", which ends on 28 February 2011. |
 
-I couldn't fix the first one with a general rule either: stripping "Mr" but keeping the dot would break a training label, where `Mr.Kartheek R` is labelled `Kartheek R`. With the original labels the score is 91.7% (22 of 24 fields), and these two cells are the only misses. The training labels are unchanged.
+Training labels (`train.csv`):
 
-Training-set recall (each document scored with itself removed from the prompt examples), plus an extractive QA baseline:
+| Document | Problem | Fix |
+|---|---|---|
+| 54770958, 54945838 | Swapped: each scan contains the other one's agreement | Swapped the rows back |
+| 24158401 | Its file is in `test/`, and the row duplicates its test label | Removed the row |
+| 36199312 | End date 31.04.2011 doesn't exist (11 months from 1 May 2010) | 31.03.2011 |
+| 47854715 | End date 31.02.2011 doesn't exist (11 months from 1 April 2010) | 28.02.2011 |
+| 18325926 | End date 31.11.2009 doesn't exist ("eleven months from" 5 December 2008) | 04.11.2009 |
+| 18325926 | Party One "MR.K.Kuttan" keeps the title every other label drops | K.Kuttan |
+| 6683127, 6683129 | "GERALDINE Q." and "Ingles, Jr." only appear in the signature lines of the full contract; the page-1 file never contains them. Both contracts name the parties as "GERALDINE O. GALINATO" and "Ingles. Jr." | Copied the names as the contracts write them |
+| 54770958 | "Deepthi" and "Ramesh K.N"; the scan writes "Deepti" and "Ramesh.K.N" everywhere, signatures included | Copied as written |
+
+With the original labels, the scores were 91.7% on test and 71.4% on the 7 training documents I could use (50% on all 10 rows as given).
+
+Recall with the corrected labels (each training document is scored with itself removed from the prompt examples), plus an extractive QA baseline:
 
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| LLM, test | 100% | 100% | 100% | 100% | 100% | 100% | 100% |
-| LLM, train (7 usable docs) | 85.7% | 85.7% | 42.9% | 100% | 42.9% | 71.4% | 71.4% |
-| LLM, train (all 10 rows as given) | 60% | 60% | 30% | 70% | 30% | 50% | 50.0% |
+| LLM, test | 100% | 100% | 100% | 100% | 100% | 100% | **100%** |
+| LLM, train (8 readable docs) | 100% | 87.5% | 75% | 100% | 87.5% | 100% | **91.7%** |
+| LLM, train (all 9 labelled docs) | 88.9% | 77.8% | 66.7% | 100% | 77.8% | 100% | **85.2%** |
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
-| QA baseline, train (7 usable docs) | 57.1% | 14.3% | 14.3% | 14.3% | 0% | 0% | 16.7% |
+| QA baseline, train (8 readable docs) | 75% | 12.5% | 12.5% | 0% | 0% | 0% | 16.7% |
 
-Almost all training misses are data problems (see below): impossible labelled end dates, a garbled Word file, and two Word files whose text differs from their labels (`Ingles. Jr.` vs `Ingles, Jr.`, `GERALDINE O.` vs `GERALDINE Q.`). Full tables are in [`outputs/results.md`](outputs/results.md), and every miss is listed in `outputs/errors_*.csv`.
+The 8 remaining training misses:
+- **44737744 (4 misses).** The Word file is itself bad OCR text: the rent reads "Rs 9.99.7.9°" and the dates aren't there. The labels are probably right, so I left them, and "readable" leaves this file out.
+- **54770958 (2 misses).** The label says 21.04.2011 to 19.02.2012, but the scan never states a tenancy start date, so there is nothing to check it against. I left it as given.
+- **18325926 (2 misses), my model's errors.** It keeps the father's name ("K.Kuttan S/o Kelu Aehari (Late)") and gives 30.11.2009 as the end date instead of 04.11.2009.
+
+Full tables are in [`outputs/results.md`](outputs/results.md), and every miss is listed in `outputs/errors_*.csv`.
 
 ## Approach
 
@@ -65,7 +85,7 @@ Almost all training misses are data problems (see below): impossible labelled en
    - the term in months
    - the notice period as a number and a unit
    - both party names, copied exactly, without titles; a company rather than the person signing for it
-3. **Arithmetic and formatting.** If no end date is written, it's start date + term − 1 day (01.04.2008 + 12 months → 31.03.2009). Notice in months is multiplied by 30. Names lose one leading title (Sri, Mr, Mrs, ...) and trailing punctuation. This step only works on the model's answers and never looks at the document.
+3. **Arithmetic and formatting.** If no end date is written, it's start date + term − 1 day (01.04.2008 + 12 months → 31.03.2009). Notice in months is multiplied by 30. Each name in a party ("Asha Ramesh & Mr.Ramesh.K.N") loses one leading title (Sri, Mr, Mrs, ...), and trailing punctuation is dropped. This step only works on the model's answers and never looks at the document.
 
 **Why a generative model and not span extraction.** Half the fields aren't written the way the labels expect them. Agreements say "11 (Eleven) months commencing from 1st April" rather than giving an end date, and "two months notice" rather than "60". An extractive QA model (`deepset/roberta-base-squad2`, the baseline above) can only copy spans and scores 12.5% on test.
 
@@ -73,7 +93,7 @@ Almost all training misses are data problems (see below): impossible labelled en
 
 **How the models were chosen.** I compared current small OCR and vision-language models on the five scans and the training documents (the test set was only scored, never used to choose):
 
-| OCR + language model | Test (original labels) | Train (7 usable) |
+| OCR + language model | Test | Train (7 usable docs) |
 |---|---:|---:|
 | OvisOCR3 + Qwen3-4B-Instruct | 87.5% | 64.3% |
 | GLM-OCR + Qwen3-4B-Instruct | 87.5% | 66.7% |
@@ -81,23 +101,18 @@ Almost all training misses are data problems (see below): impossible labelled en
 | GLM-OCR + Qwen3.5-4B | 87.5% | 71.4% |
 | **GLM-OCR + Qwen3.5-4B, final prompt and name formatting** | **91.7%** | **71.4%** |
 
-I made this comparison before correcting the two test labels, so the best possible test score here was 91.7%. The first four rows use the same prompt. My first version (Tesseract + Qwen3-4B-Instruct) scored 79.2% on test and 64.3% on train.
+I made this comparison before correcting any labels, so the best possible test score here was 91.7%. The first four rows use the same prompt. My first version (Tesseract + Qwen3-4B-Instruct) scored 79.2% on test and 64.3% on train.
 
 - **OCR.** Tesseract drops punctuation inside names ("V.V.Ravi Kian" → "V.V Ravi Kian"), which exact matching punishes. OvisOCR3 fixed that but misread "Kartheek" as "Karthreek". GLM-OCR read every name, date and amount correctly. On the 2550 px scan it gives the same names at 1275 px width in a third of the time and memory.
 - **Language model.** Qwen3.5-4B scored higher than Qwen3-4B-Instruct on the training documents, mostly on names. With the first prompt it named a company's signatory as the tenant; the final prompt asks for the company itself.
 - **Reading page images directly.** I also tried giving Qwen3.5-4B the page images instead of OCR text. Three-page scans ran out of memory on an 8 GB GPU, so OCR text it is.
-- **LFM3-VL-2B.** Liquid's new 2B vision model is small enough to read the scans itself, which would remove the OCR model. It reads the text fine ("V.V.Ravi Kian", the rent), but it's much weaker at the extraction: it copies dates from the example agreements, swaps owner and tenant, and adds parentage to names. With the corrected test labels, its best setup (page images capped at 1024 tokens per page, no examples) scored 79.2% on test and 47.6% on train. Used as a text model in place of Qwen, it scored 45.8% and 50.0%. The current pipeline scores 100% and 71.4%.
+- **LFM3-VL-2B.** Liquid's new 2B vision model is small enough to read the scans itself, which would remove the OCR model. It reads the text fine ("V.V.Ravi Kian", the rent), but it's much weaker at the extraction: it copies dates from the example agreements, swaps owner and tenant, and adds parentage to names. Before I corrected the training labels, its best setup (page images capped at 1024 tokens per page, no examples) scored 79.2% on test and 47.6% on train. Used as a text model in place of Qwen, it scored 45.8% and 50.0%. On the same labels, this pipeline scored 100% and 71.4%.
 
 ## Problems in the provided data
 
-- **Swapped labels.** `54770958` and `54945838` have swapped labels in `train.csv`. Each scan contains the other one's agreement.
-- **Missing training file.** `24158401` has a row in `train.csv`, but its file is only in `test/`.
-- **Unlabelled file.** `46239065` is in `train/` but has no label.
+- **Wrong labels.** The two tables above: swapped rows, a test document labelled in train, dates that don't exist (31.04, 31.02, 31.11), and names that don't match the document. All corrected in the CSVs.
+- **Unlabelled file.** `46239065` is in `train/` but has no label, so it isn't scored.
 - **Garbled text.** The `44737744` Word file is itself bad OCR text, and the rent is unreadable ("Rs9.99.7.9°").
-- **Impossible dates.** Some labels have dates that don't exist: 31.04.2011, 31.02.2011, 31.11.2009.
-- **Test labels that contradict the document.** The two cells above, which I corrected in `test.csv`.
-
-The "7 usable docs" view leaves out the swapped pair and the missing file.
 
 ## Run it
 

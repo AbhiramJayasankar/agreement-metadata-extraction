@@ -65,7 +65,8 @@ def infer_end_date(start: str, months: str) -> str:
 
 
 def clean_party(name: str) -> str:
-    name = re.sub(r"^(?:Sri|Shri|Smt|Mr|Mrs|Ms|Dr|Prof)(?:\.\s*|\s+|$)", "", name.strip(), count=1, flags=re.IGNORECASE)
+    """Drop one title from the start of each joined party name, and trailing punctuation."""
+    name = re.sub(r"(^|\s(?:&|and|and/or)\s)(?:Sri|Shri|Smt|Mr|Mrs|Ms|Dr|Prof)(?:\.\s*|\s+|$)", r"\1", name.strip(), flags=re.IGNORECASE)
     return name.rstrip(".,;:").strip()
 
 
