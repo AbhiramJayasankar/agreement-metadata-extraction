@@ -4,8 +4,8 @@ from docx import Document
 import pytest
 
 from metadata_extractor.dataset import files_by_stem, read_labels, write_predictions
-from metadata_extractor.evaluate import recall_rows, usable_labels
-from metadata_extractor.fields import CSV_COLUMNS, FACT_KEYS, facts_to_fields, format_answer, infer_end_date
+from metadata_extractor.evaluate import corrected_test_labels, recall_rows, usable_labels
+from metadata_extractor.fields import CSV_COLUMNS, FACT_KEYS, clean_party, facts_to_fields, format_answer, infer_end_date
 from metadata_extractor.llm import EXAMPLES, parse_json_object, select_examples
 from metadata_extractor.text import extract_text
 
@@ -128,3 +128,72 @@ def test_gold_dates_are_not_validated_or_repaired(tmp_path):
     row = dict.fromkeys(CSV_COLUMNS, "") | {"File Name": "one", "Aggrement End Date": " 31.02.2011 "}
     write_predictions(path, [row])
     assert read_labels(path)[0]["Aggrement End Date"] == "31.02.2011"
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("SRI VYSHNAVI DAIRY SPECIALITIES Private Ltd.", "VYSHNAVI DAIRY SPECIALITIES Private Ltd"),
+    ("Mr. P. JohnsonRavikumar", "P. JohnsonRavikumar"),
+    ("Mrs.Asha Ramesh", "Asha Ramesh"), ("B.Kishore", "B.Kishore"),
+    ("Drona Rao", "Drona Rao"), ("Mrinal Sen", "Mrinal Sen"),
+    ("K. Parthasarathy", "K. Parthasarathy"), ("", ""),
+    (" shRI. A.B,;: ", "A.B"), ("Dr Mr. Name", "Mr. Name"),
+])
+def test_clean_party(name, expected):
+    assert clean_party(name) == expected
+    assert facts_to_fields({"lessor": name, "lessee": name})["Party One"] == expected
+    assert facts_to_fields({"lessor": name, "lessee": name})["Party Two"] == expected
+
+
+def test_split_pages_cuts_on_white_row():
+    from PIL import Image, ImageDraw
+    from metadata_extractor.ocr import split_pages
+
+    image = Image.new("RGB", (200, 532), "white")
+    draw = ImageDraw.Draw(image)
+    for top in (30, 100, 186, 300, 400):
+        draw.rectangle((10, top, 190, top + 15), fill="black")
+    pages = split_pages(image)
+    assert len(pages) == 2
+    cut = pages[0].height
+    assert 186 <= cut < 346
+    assert all(image.getpixel((x, cut)) == (255, 255, 255) for x in range(image.width))
+    assert sum(page.height for page in pages) == image.height
+
+
+def test_image_cache_separates_engines(tmp_path, monkeypatch):
+    from PIL import Image
+    from metadata_extractor import text
+
+    path = tmp_path / "scan.png"
+    Image.new("RGB", (10, 10), "white").save(path)
+    cache = tmp_path / "text"
+    cache.mkdir()
+    (cache / "scan.txt").write_text("old OCR", encoding="utf-8")
+    calls = []
+    def fake_ocr(path, engine):
+        calls.append(engine)
+        return engine
+    monkeypatch.setattr(text, "image_text", fake_ocr)
+    for engine in ("glm", "tesseract", "glm", "tesseract"):
+        assert extract_text(path, cache, engine=engine) == engine
+        assert (cache / f"scan.{engine}.txt").read_text(encoding="utf-8") == engine
+    assert calls == ["glm", "tesseract"]
+
+
+def test_corrected_test_scoring_does_not_change_original_labels():
+    labels = [dict.fromkeys(CSV_COLUMNS, "") | {
+        "File Name": "228094620-Rental-Agreement", "Party Two": ".B.Kishore",
+    }, dict.fromkeys(CSV_COLUMNS, "") | {
+        "File Name": "95980236-Rental-Agreement", "Aggrement End Date": "31.03.2011",
+    }]
+    predictions = [dict(labels[0], **{"Party Two": "B.Kishore"}),
+                   dict(labels[1], **{"Aggrement End Date": "28.02.2011"})]
+    scores, errors = recall_rows(labels, predictions)
+    assert len(errors) == 2
+    assert scores[5]["Recall"] == 0.5
+    assert scores[5]["Lenient Recall"] == 1
+    corrected_scores, corrected_errors = recall_rows(corrected_test_labels(labels), predictions)
+    assert corrected_errors == []
+    assert all(row["Recall"] == 1 for row in corrected_scores)
+    assert labels[0]["Party Two"] == ".B.Kishore"
+    assert labels[1]["Aggrement End Date"] == "31.03.2011"

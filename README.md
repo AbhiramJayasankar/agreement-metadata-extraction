@@ -11,97 +11,107 @@ Extracts six fields from rental agreements given as Word files or scanned images
 | Party One (owner / lessor) | `Hanumaiah` |
 | Party Two (tenant / lessee) | `Vishal Bhardwaj` |
 
-No regex or keyword rules are used to read documents. A local language model does the reading.
+No regex or keyword rules are used to read documents. Two small local models do the reading: an OCR model for scans and a language model for the fields.
 
 ## Test set results
 
 Per-field recall = exact matches / number of documents (4 test documents).
 
-| Field | Recall | Lenient recall |
-|---|---:|---:|
-| Agreement Value | **100%** | 100% |
-| Agreement Start Date | **100%** | 100% |
-| Agreement End Date | **75%** | 75% |
-| Renewal Notice (Days) | **75%** | 75% |
-| Party One | **100%** | 100% |
-| Party Two | **25%** | 75% |
-| Mean | **79.2%** | 87.5% |
+| Field | Recall | Recall, labels corrected | Lenient recall |
+|---|---:|---:|---:|
+| Agreement Value | **100%** | 100% | 100% |
+| Agreement Start Date | **100%** | 100% | 100% |
+| Agreement End Date | **75%** | 100% | 75% |
+| Renewal Notice (Days) | **100%** | 100% | 100% |
+| Party One | **100%** | 100% | 100% |
+| Party Two | **75%** | 100% | 100% |
+| Mean | **91.7%** | 100% | 95.8% |
 
-"Lenient" ignores case, spaces and punctuation, so it separates real misses from formatting differences. Predictions are in [`outputs/test_predictions.csv`](outputs/test_predictions.csv).
+"Lenient" ignores case, spaces and punctuation. Predictions are in [`outputs/test_predictions.csv`](outputs/test_predictions.csv).
 
-The five remaining misses:
+Both remaining misses are labels that contradict their documents:
 
-| Document | Field | Expected | Predicted | Why |
+| Document | Field | Label | Predicted | Document says |
 |---|---|---|---|---|
-| 95980236 | End date | 31.03.2011 | 30.03.2011 | The document gives 11 months from 1 April 2010, which the label doesn't match either. |
-| 95980236 | Party Two | V.V.Ravi Kian | V.V Ravi Kian | The scan reads "V.V Ravi Kian". |
-| 156155545 | Notice | 30 | (empty) | Real miss. |
-| 156155545 | Party Two | VYSHNAVI DAIRY SPECIALITIES Private Ltd | SRI VYSHNAVI DAIRY SPECIALITIES Private Ltd. | "SRI" is part of the company name here, but the label drops it. |
-| 228094620 | Party Two | .B.Kishore | B.Kishore | The label has a stray leading dot. |
+| 228094620 | Party Two | .B.Kishore | B.Kishore | "Mr.B.Kishore". The label removed "Mr" and kept the dot. |
+| 95980236 | End date | 31.03.2011 | 28.02.2011 | "11 (Eleven) months commencing from 1st April 2010". |
 
-Training-set recall (each document scored with itself removed from the prompt examples), plus an extractive QA baseline for comparison:
+No single title rule produces `.B.Kishore` without breaking a training label: `Mr.Kartheek R` is labelled `Kartheek R`. The "labels corrected" column scores these two cells against what the documents say; every other number uses the labels as given. The CSVs are unchanged.
+
+Training-set recall (each document scored with itself removed from the prompt examples), plus an extractive QA baseline:
 
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| LLM, test | 100% | 100% | 75% | 75% | 100% | 25% | 79.2% |
-| LLM, train (7 usable docs) | 85.7% | 85.7% | 42.9% | 85.7% | 28.6% | 57.1% | 64.3% |
-| LLM, train (all 10 rows as given) | 60% | 60% | 30% | 60% | 20% | 40% | 45.0% |
+| LLM, test | 100% | 100% | 75% | 100% | 100% | 75% | 91.7% |
+| LLM, train (7 usable docs) | 85.7% | 85.7% | 42.9% | 100% | 42.9% | 71.4% | 71.4% |
+| LLM, train (all 10 rows as given) | 60% | 60% | 30% | 70% | 30% | 50% | 50.0% |
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
 | QA baseline, train (7 usable docs) | 57.1% | 14.3% | 14.3% | 14.3% | 0% | 0% | 16.7% |
 
-Full tables, including lenient scores, are in [`outputs/results.md`](outputs/results.md). Every miss is listed in `outputs/errors_*.csv`.
+Almost all training misses are data problems (see below): impossible labelled end dates, a garbled Word file, and two Word files whose text differs from their labels (`Ingles. Jr.` vs `Ingles, Jr.`, `GERALDINE O.` vs `GERALDINE Q.`). Full tables are in [`outputs/results.md`](outputs/results.md), and every miss is listed in `outputs/errors_*.csv`.
 
 ## Approach
 
 ```
 .docx ──python-docx──┐
-                     ├─► text ─► Qwen3-4B-Instruct (2 worked examples) ─► facts as JSON ─► arithmetic ─► 6 fields
-.png / .jpg ─Tesseract┘
+                     ├─► text ─► Qwen3.5-4B (2 worked examples) ─► facts as JSON ─► arithmetic ─► 6 fields
+.png / .jpg ─GLM-OCR─┘
 ```
 
-1. **Text.** Word files are read with python-docx (paragraphs and tables, in order). Images go through Tesseract OCR. The scans are clean enough that Tesseract's output is good, and the model copes with OCR artefacts such as "1* April".
-2. **Reading.** [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) gets the whole document plus two labelled training agreements as examples. It returns what the document *says* as JSON:
+1. **Text.** Word files are read with python-docx (paragraphs and tables, in order). Scans are split into pages at the whitest row near each page boundary, scaled to at most 1275 px wide, and read by [GLM-OCR](https://huggingface.co/zai-org/GLM-OCR) (0.9B).
+2. **Reading.** [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) gets the document text plus two labelled training agreements as examples. It returns what the document *says* as JSON:
    - monthly rent and start date
    - the end date, only if it's written explicitly
    - the term in months
    - the notice period as a number and a unit
-   - both party names, copied exactly
-   
-   It runs in 4-bit (NF4) on GPU and takes about 12 s per document on an RTX 4060 Laptop GPU.
-3. **Arithmetic.** If no end date is written, it's computed as start date + term − 1 day (01.04.2008 + 12 months → 31.03.2009). Notice in months is multiplied by 30. This step only works on the model's answers and never looks at the document.
+   - both party names, copied exactly, without titles; a company rather than the person signing for it
+3. **Arithmetic and formatting.** If no end date is written, it's start date + term − 1 day (01.04.2008 + 12 months → 31.03.2009). Notice in months is multiplied by 30. Names lose one leading title (Sri, Mr, Mrs, ...) and trailing punctuation. This step only works on the model's answers and never looks at the document.
 
-**Why a generative model and not span extraction.** Half the fields aren't written in the document the way the labels expect them. Agreements say "11 (Eleven) months commencing from 1st April" rather than giving an end date, and "two months notice" rather than "60". Rent appears as "Rs.9,000/-". The start date is often different from the signing date. An extractive QA model (`deepset/roberta-base-squad2`, the baseline above) can only copy spans, and it scores 12.5% on test.
+**Why a generative model and not span extraction.** Half the fields aren't written the way the labels expect them. Agreements say "11 (Eleven) months commencing from 1st April" rather than giving an end date, and "two months notice" rather than "60". An extractive QA model (`deepset/roberta-base-squad2`, the baseline above) can only copy spans and scores 12.5% on test.
 
-**Why the model doesn't do the maths.** An earlier version asked the model for the final end date and notice in days directly. A 4B model is unreliable at calendar arithmetic, and test recall was 54%. Asking only for stated facts and computing the rest raised it to 79%.
+**Why the model doesn't do the maths.** A 4B model is unreliable at calendar arithmetic. Asking only for stated facts and computing the rest took test recall from 54% to 79% in an earlier version.
 
-**Prompt choices** were made using the training documents only.
+**How the models were chosen.** I compared current small OCR and vision-language models on the five scans and the training documents (the test set was only scored, never used to choose):
+
+| OCR + language model | Test | Train (7 usable) |
+|---|---:|---:|
+| OvisOCR3 + Qwen3-4B-Instruct | 87.5% | 64.3% |
+| GLM-OCR + Qwen3-4B-Instruct | 87.5% | 66.7% |
+| Tesseract + Qwen3.5-4B | 83.3% | 71.4% |
+| GLM-OCR + Qwen3.5-4B | 87.5% | 71.4% |
+| **GLM-OCR + Qwen3.5-4B, final prompt and name formatting** | **91.7%** | **71.4%** |
+
+The first four rows use the same prompt. The previous version of this repo (Tesseract + Qwen3-4B-Instruct) scored 79.2% on test and 64.3% on train.
+
+- **OCR.** Tesseract drops punctuation inside names ("V.V.Ravi Kian" → "V.V Ravi Kian"), which exact matching punishes. OvisOCR3 fixed that but misread "Kartheek" as "Karthreek". GLM-OCR read every name, date and amount correctly. On the 2550 px scan it gives the same names at 1275 px width in a third of the time and memory.
+- **Language model.** Qwen3.5-4B scored higher than Qwen3-4B-Instruct on the training documents, mostly on names. With the first prompt it named a company's signatory as the tenant; the final prompt asks for the company itself.
+- **Reading page images directly.** I also tried giving Qwen3.5-4B the page images instead of OCR text. Three-page scans ran out of memory on an 8 GB GPU, so OCR text it is.
 
 ## Problems in the provided data
 
-These show up when the labels are compared with the documents:
-
-- **Swapped labels.** `54770958` and `54945838` have swapped labels in `train.csv`. Each scan contains the other one's agreement (Asha Ramesh / Rs 5,500 vs K. Parthasarathy / Rs 8,000).
+- **Swapped labels.** `54770958` and `54945838` have swapped labels in `train.csv`. Each scan contains the other one's agreement.
 - **Missing training file.** `24158401` has a row in `train.csv`, but its file is only in `test/`.
 - **Unlabelled file.** `46239065` is in `train/` but has no label.
 - **Garbled text.** The `44737744` Word file is itself bad OCR text, and the rent is unreadable ("Rs9.99.7.9°").
 - **Impossible dates.** Some labels have dates that don't exist: 31.04.2011, 31.02.2011, 31.11.2009.
+- **Labels that contradict the document.** The two test cells above.
 
-The "7 usable docs" training view leaves out the first two problems: the swapped pair and the missing file. The CSVs themselves are unchanged, and all scores use the labels as given.
+The "7 usable docs" view leaves out the swapped pair and the missing file.
 
 ## Run it
 
 Requirements:
 - Python 3.11+
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract), on `PATH` or set via `TESSERACT_CMD`
-- PyTorch from [pytorch.org](https://pytorch.org/get-started/locally/), the CUDA build for GPU
-
-The model downloads (~8 GB) on first use. Without a GPU it runs in fp32 on CPU, which is much slower.
+- PyTorch and torchvision from [pytorch.org](https://pytorch.org/get-started/locally/), the CUDA build for GPU
+- An NVIDIA GPU with 8 GB is enough. Without one, everything runs on CPU, much more slowly.
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate             # source .venv/bin/activate on Linux/macOS
 pip install -r requirements.txt
 ```
+
+The two models (about 11 GB) download on first use. On an RTX 4060 Laptop GPU, OCR takes about 25-45 s per scan and the language model about 9 s per document. OCR text is cached in `outputs/text`.
 
 Predict a folder of documents:
 
@@ -121,6 +131,8 @@ Run the unit tests (no model needed):
 python -m pytest -q
 ```
 
+Options: `--ocr tesseract` uses Tesseract instead of GLM-OCR (install the [Tesseract](https://github.com/tesseract-ocr/tesseract) executable; set `TESSERACT_CMD` if it isn't on `PATH`). `--model` takes another Hugging Face model, for example `Qwen/Qwen3-4B-Instruct-2507`.
+
 ## REST API
 
 ```bash
@@ -136,15 +148,16 @@ curl -F "file=@data/test/24158401-Rental-Agreement.png" http://localhost:8000/ex
  "Renewal Notice (Days)": "60", "Party One": "Hanumaiah", "Party Two": "Vishal Bhardwaj"}
 ```
 
-`POST /extract` accepts `.docx`, `.png`, `.jpg` and `.jpeg`. `GET /health` reports the loaded model. Interactive docs are at `/docs`.
+`POST /extract` accepts `.docx`, `.png`, `.jpg` and `.jpeg`. Models load on the first request, and both fit on an 8 GB GPU together. `GET /health` reports the model. Set `OCR_ENGINE=tesseract` or `METADATA_MODEL=<model id>` to change the defaults. Interactive docs are at `/docs`.
 
 ## Layout
 
 ```
 metadata_extractor/
-  text.py          docx reading and OCR
+  text.py          docx reading, OCR dispatch and text cache
+  ocr.py           page splitting and GLM-OCR
   llm.py           prompt, examples and model call
-  fields.py        output schema and arithmetic on extracted facts
+  fields.py        output schema, arithmetic and name formatting
   qa_baseline.py   extractive QA baseline
   predict.py       CLI: predict a folder
   evaluate.py      CLI: per-field recall on train and test
@@ -156,5 +169,5 @@ outputs/           predictions, scores, misses, cached document text
 ## Limitations
 
 - **Few examples.** There are only 14 labelled documents, two of them near-duplicates, so the scores are a rough guide.
-- **Scan quality.** OCR quality limits images. Handwriting or poor scans would need a stronger OCR engine.
-- **Model size.** A larger model would likely fix the notice and name-copying misses, but would need more GPU memory than this 8 GB setup.
+- **Typed scans only.** All the scans are clean typed pages. Handwriting or photos of documents haven't been tested.
+- **Speed.** OCR dominates on scans. A llama.cpp or vLLM server would be faster than plain transformers but is harder to set up on Windows.

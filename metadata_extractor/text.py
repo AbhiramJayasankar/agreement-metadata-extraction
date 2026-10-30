@@ -41,7 +41,12 @@ def docx_text(path: Path) -> str:
     return "\n".join(_blocks(Document(path)))
 
 
-def image_text(path: Path) -> str:
+def image_text(path: Path, engine: str = "glm") -> str:
+    if engine == "glm":
+        from .ocr import image_text as glm_text
+        return glm_text(path)
+    if engine != "tesseract":
+        raise ValueError(f"Unknown OCR engine: {engine}")
     executable = os.environ.get("TESSERACT_CMD")
     if executable:
         pytesseract.pytesseract.tesseract_cmd = executable
@@ -55,16 +60,19 @@ def image_text(path: Path) -> str:
         return pytesseract.image_to_string(image)
 
 
-def extract_text(path: str | Path, cache_dir: str | Path | None = "outputs/text") -> str:
+def extract_text(path: str | Path, cache_dir: str | Path | None = "outputs/text", engine: str = "glm") -> str:
     """Read DOCX or OCR an image, normalizing whitespace only."""
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise ValueError(f"Unsupported file extension: {suffix}")
-    cache = Path(cache_dir) / f"{document_stem(path)}.txt" if cache_dir is not None else None
+    if engine not in ("glm", "tesseract"):
+        raise ValueError(f"Unknown OCR engine: {engine}")
+    ending = "" if suffix == ".docx" else f".{engine}"
+    cache = Path(cache_dir) / f"{document_stem(path)}{ending}.txt" if cache_dir is not None else None
     if cache and cache.exists() and cache.stat().st_mtime_ns >= path.stat().st_mtime_ns:
         return cache.read_text(encoding="utf-8")
-    raw = docx_text(path) if suffix == ".docx" else image_text(path)
+    raw = docx_text(path) if suffix == ".docx" else image_text(path, engine)
     text = "\n".join(" ".join(line.split()) for line in raw.splitlines() if line.strip())
     if cache:
         cache.parent.mkdir(parents=True, exist_ok=True)

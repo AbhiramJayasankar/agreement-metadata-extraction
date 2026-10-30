@@ -20,11 +20,21 @@ def make_extractor(
     return LLMExtractor(model_id=model or DEFAULT_MODEL, quantization=quantization, device=device, data_dir=data_dir)
 
 
-def predict_file(path: Path, extractor, leave_one_out: bool = False) -> tuple[dict[str, str], float]:
+def prepare_texts(paths, engine: str = "glm") -> dict[Path, str]:
+    from .ocr import release
+
+    try:
+        return {path: extract_text(path, engine=engine) for path in paths}
+    finally:
+        release()
+
+
+def predict_file(path: Path, extractor, leave_one_out: bool = False, text: str | None = None) -> tuple[dict[str, str], float]:
     from .text import document_stem
 
     start = perf_counter()
-    text = extract_text(path)
+    if text is None:
+        text = extract_text(path)
     stem = document_stem(path)
     answers = extractor.extract(text, exclude_stem=stem if leave_one_out else None)
     seconds = perf_counter() - start
@@ -32,10 +42,10 @@ def predict_file(path: Path, extractor, leave_one_out: bool = False) -> tuple[di
     return prediction_row(stem, answers), seconds
 
 
-def predict_directory(directory: Path, extractor, out: Path) -> list[dict[str, str]]:
+def predict_directory(directory: Path, extractor, out: Path, texts: dict[Path, str]) -> list[dict[str, str]]:
     rows = []
     for path in files_by_stem(directory).values():
-        row, _ = predict_file(path, extractor)
+        row, _ = predict_file(path, extractor, text=texts[path])
         rows.append(row)
     if not rows:
         raise ValueError(f"No supported documents in {directory}")
@@ -49,12 +59,16 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("outputs/test_predictions.csv"))
     parser.add_argument("--method", choices=("llm", "qa"), default="llm")
     parser.add_argument("--model")
+    parser.add_argument("--ocr", choices=("glm", "tesseract"), default="glm")
     parser.add_argument("--quantization", choices=("auto", "nf4", "fp16"), default="auto")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    start = perf_counter()
+    texts = prepare_texts(files_by_stem(args.directory).values(), args.ocr)
+    logging.info("Text preparation (%s): %.2fs", args.ocr, perf_counter() - start)
     extractor = make_extractor(args.method, args.model, args.quantization, args.device)
-    predict_directory(args.directory, extractor, args.out)
+    predict_directory(args.directory, extractor, args.out, texts)
 
 
 if __name__ == "__main__":

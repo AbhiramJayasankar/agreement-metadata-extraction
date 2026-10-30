@@ -1,7 +1,7 @@
-# Install a suitable CUDA build of torch from https://pytorch.org before these dependencies.
+# Install suitable CUDA builds of torch and torchvision from https://pytorch.org before these dependencies.
 # CPU reviewers can install the CPU build of torch instead. Do not replace a working CUDA build.
 # Install the Tesseract OCR executable separately and put it on PATH or set TESSERACT_CMD.
-transformers>=5.0,<6
+transformers>=5.22,<6
 accelerate>=1.0,<2
 bitsandbytes>=0.50,<1; platform_system == "Windows" or platform_system == "Linux"
 python-docx>=1.1,<2

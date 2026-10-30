@@ -64,6 +64,11 @@ def infer_end_date(start: str, months: str) -> str:
         return ""
 
 
+def clean_party(name: str) -> str:
+    name = re.sub(r"^(?:Sri|Shri|Smt|Mr|Mrs|Ms|Dr|Prof)(?:\.\s*|\s+|$)", "", name.strip(), count=1, flags=re.IGNORECASE)
+    return name.rstrip(".,;:").strip()
+
+
 def facts_to_fields(facts: Mapping[str, object]) -> dict[str, str]:
     """Use model answers only; the source document is never consulted."""
     values = {key: "" if facts.get(key) is None else str(facts[key]).strip() for key in FACT_KEYS}
@@ -80,6 +85,6 @@ def facts_to_fields(facts: Mapping[str, object]) -> dict[str, str]:
         "Agreement Start Date": start,
         "Agreement End Date": end,
         "Renewal Notice (Days)": notice,
-        "Party One": values["lessor"],
-        "Party Two": values["lessee"],
+        "Party One": clean_party(values["lessor"]),
+        "Party Two": clean_party(values["lessee"]),
     }
