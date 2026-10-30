@@ -86,6 +86,7 @@ I made this comparison before correcting the two test labels, so the best possib
 - **OCR.** Tesseract drops punctuation inside names ("V.V.Ravi Kian" → "V.V Ravi Kian"), which exact matching punishes. OvisOCR3 fixed that but misread "Kartheek" as "Karthreek". GLM-OCR read every name, date and amount correctly. On the 2550 px scan it gives the same names at 1275 px width in a third of the time and memory.
 - **Language model.** Qwen3.5-4B scored higher than Qwen3-4B-Instruct on the training documents, mostly on names. With the first prompt it named a company's signatory as the tenant; the final prompt asks for the company itself.
 - **Reading page images directly.** I also tried giving Qwen3.5-4B the page images instead of OCR text. Three-page scans ran out of memory on an 8 GB GPU, so OCR text it is.
+- **LFM3-VL-2B.** Liquid's new 2B vision model is small enough to read the scans itself, which would remove the OCR model. It reads the text fine ("V.V.Ravi Kian", the rent), but it's much weaker at the extraction: it copies dates from the example agreements, swaps owner and tenant, and adds parentage to names. With the corrected test labels, its best setup (page images capped at 1024 tokens per page, no examples) scored 79.2% on test and 47.6% on train. Used as a text model in place of Qwen, it scored 45.8% and 50.0%. The current pipeline scores 100% and 71.4%.
 
 ## Problems in the provided data
 
