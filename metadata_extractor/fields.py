@@ -72,9 +72,9 @@ def facts_to_fields(facts: Mapping[str, object]) -> dict[str, str]:
     if not end:
         end = infer_end_date(start, values["term_months"])
     notice = ""
-    amount, unit = values["notice_amount"], values["notice_unit"].casefold()
-    if amount.isdecimal() and unit in ("days", "months"):
-        notice = str(int(amount) * (30 if unit == "months" else 1))
+    amount, unit = values["notice_amount"], values["notice_unit"].casefold().removesuffix("s")
+    if amount.isdecimal() and unit in ("day", "month"):
+        notice = str(int(amount) * (30 if unit == "month" else 1))
     return {
         "Agreement Value": format_answer("Agreement Value", values["monthly_rent"]),
         "Agreement Start Date": start,

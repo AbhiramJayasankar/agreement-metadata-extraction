@@ -98,6 +98,7 @@ def test_facts_use_explicit_end_and_preserve_names():
 
 @pytest.mark.parametrize("amount,unit,expected", [
     ("15", "days", "15"), ("3", "months", "90"), ("0", "days", "0"),
+    ("1", "month", "30"), ("1", "Day", "1"),
     ("", "months", ""), ("2", "", ""), ("two", "months", ""),
 ])
 def test_notice_arithmetic(amount, unit, expected):
