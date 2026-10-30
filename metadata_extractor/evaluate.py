@@ -12,29 +12,11 @@ from .fields import CSV_COLUMNS, FIELDS, FIELD_TO_COLUMN
 from .predict import make_extractor, predict_file, prepare_texts
 from .llm import DEFAULT_MODEL
 
-TEST_LABEL_FIXES = {
-    ("228094620-Rental-Agreement", "Party Two"): (
-        "B.Kishore", 'Document reads "Mr.B.Kishore"; the label kept the dot after removing "Mr".',
-    ),
-    ("95980236-Rental-Agreement", "Agreement End Date"): (
-        "28.02.2011", "Document states 11 months commencing 1st April 2010.",
-    ),
-}
-
 USABLE_EXCLUSIONS = {
     "24158401-Rental-Agreement",
     "54770958-Rental-Agreement",
     "54945838-Rental-Agreement",
 }
-
-
-def corrected_test_labels(labels: list[dict[str, str]]) -> list[dict[str, str]]:
-    corrected = [row.copy() for row in labels]
-    for row in corrected:
-        for (stem, field), (value, _) in TEST_LABEL_FIXES.items():
-            if row["File Name"] == stem:
-                row[FIELD_TO_COLUMN[field]] = value
-    return corrected
 
 
 def usable_labels(labels: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -105,8 +87,6 @@ def evaluate_split(split: str, method: str, extractor, data_dir: Path, output_di
             views["LLM train as provided"] = scores
     else:
         views[f"{method.upper()} test"] = scores
-        if method == "llm":
-            views["LLM test, labels corrected"], _ = recall_rows(corrected_test_labels(labels), predictions, missing)
     if method == "llm":
         write_predictions(output_dir / f"{split}_predictions.csv", predictions)
         with (output_dir / f"errors_{split}.csv").open("w", encoding="utf-8", newline="") as handle:
@@ -118,7 +98,7 @@ def evaluate_split(split: str, method: str, extractor, data_dir: Path, output_di
 
 def write_results(output_dir: Path, results: dict[str, list[dict]], timings: list[float], model: str, device: str, quantization: str, text_seconds: float = 0, ocr_engine: str = "glm") -> None:
     lines = []
-    order = ("LLM test", "LLM test, labels corrected", "LLM train usable", "LLM train as provided", "QA test", "QA train usable")
+    order = ("LLM test", "LLM train usable", "LLM train as provided", "QA test", "QA train usable")
     for title, metric in (("Strict recall", "Recall"), ("Lenient recall", "Lenient Recall")):
         lines.extend([title, "", "| Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |",
                       "|---|---:|---:|---:|---:|---:|---:|---:|"])
@@ -132,8 +112,8 @@ def write_results(output_dir: Path, results: dict[str, list[dict]], timings: lis
     lines.extend([
         "- Strict recall strips leading/trailing spaces; lenient recall also ignores case, spaces and punctuation. Empty answers match empty labels.",
         "- Train usable has 7 rows: 24158401 is missing; 54770958 and 54945838 have swapped labels. Unlabeled 46239065 is excluded from both views. Train as provided has all 10 CSV rows; test has all 4.",
-        "- Except for the corrected test view, labels are scored as given, including impossible dates such as 31.02.2011.",
-        "- Corrected test labels: " + " ".join(f"{stem}, {field}: {value}. {reason}" for (stem, field), (value, reason) in TEST_LABEL_FIXES.items()),
+        "- test.csv has two corrected labels: 228094620 Party Two (.B.Kishore -> B.Kishore; the document reads \"Mr.B.Kishore\") and 95980236 end date (31.03.2011 -> 28.02.2011; 11 months from 1st April 2010).",
+        "- Training labels are scored as given, including impossible dates such as 31.02.2011.",
         "- The prompt holds two training documents as examples; a training document is never its own example.",
         "- QA answers are spans copied from the text, so it cannot produce computed end dates or notice in days.",
         f"- LLM {model} ({quantization}, {'GPU' if device == 'cuda' else 'CPU'}): mean {mean_seconds} seconds/document, excluding model loading.",

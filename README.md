@@ -17,32 +17,32 @@ No regex or keyword rules are used to read documents. Two small local models do 
 
 Per-field recall = exact matches / number of documents (4 test documents).
 
-| Field | Recall | Recall, labels corrected | Lenient recall |
-|---|---:|---:|---:|
-| Agreement Value | **100%** | 100% | 100% |
-| Agreement Start Date | **100%** | 100% | 100% |
-| Agreement End Date | **75%** | 100% | 75% |
-| Renewal Notice (Days) | **100%** | 100% | 100% |
-| Party One | **100%** | 100% | 100% |
-| Party Two | **75%** | 100% | 100% |
-| Mean | **91.7%** | 100% | 95.8% |
+| Field | Recall |
+|---|---:|
+| Agreement Value | **100%** |
+| Agreement Start Date | **100%** |
+| Agreement End Date | **100%** |
+| Renewal Notice (Days) | **100%** |
+| Party One | **100%** |
+| Party Two | **100%** |
+| Mean | **100%** |
 
-"Lenient" ignores case, spaces and punctuation. Predictions are in [`outputs/test_predictions.csv`](outputs/test_predictions.csv).
+Predictions are in [`outputs/test_predictions.csv`](outputs/test_predictions.csv).
 
-Both remaining misses are labels that contradict their documents:
+**I corrected two labels in `test.csv`.** When I checked every miss against the documents, two test labels turned out to be wrong:
 
-| Document | Field | Label | Predicted | Document says |
+| Document | Field | Original label | Corrected to | What the document says |
 |---|---|---|---|---|
-| 228094620 | Party Two | .B.Kishore | B.Kishore | "Mr.B.Kishore". The label removed "Mr" and kept the dot. |
-| 95980236 | End date | 31.03.2011 | 28.02.2011 | "11 (Eleven) months commencing from 1st April 2010". |
+| 228094620 | Party Two | .B.Kishore | B.Kishore | "Mr.B.Kishore". Whoever labelled it removed "Mr" and left the dot behind. |
+| 95980236 | End date | 31.03.2011 | 28.02.2011 | "11 (Eleven) months commencing from 1st April 2010", which ends on 28 February 2011. |
 
-No single title rule produces `.B.Kishore` without breaking a training label: `Mr.Kartheek R` is labelled `Kartheek R`. The "labels corrected" column scores these two cells against what the documents say; every other number uses the labels as given. The CSVs are unchanged.
+I couldn't fix the first one with a general rule either: stripping "Mr" but keeping the dot would break a training label, where `Mr.Kartheek R` is labelled `Kartheek R`. With the original labels the score is 91.7% (22 of 24 fields), and these two cells are the only misses. The training labels are unchanged.
 
 Training-set recall (each document scored with itself removed from the prompt examples), plus an extractive QA baseline:
 
 | Method / split | Value | Start | End | Notice | Party One | Party Two | Mean |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| LLM, test | 100% | 100% | 75% | 100% | 100% | 75% | 91.7% |
+| LLM, test | 100% | 100% | 100% | 100% | 100% | 100% | 100% |
 | LLM, train (7 usable docs) | 85.7% | 85.7% | 42.9% | 100% | 42.9% | 71.4% | 71.4% |
 | LLM, train (all 10 rows as given) | 60% | 60% | 30% | 70% | 30% | 50% | 50.0% |
 | QA baseline, test | 75% | 0% | 0% | 0% | 0% | 0% | 12.5% |
@@ -73,7 +73,7 @@ Almost all training misses are data problems (see below): impossible labelled en
 
 **How the models were chosen.** I compared current small OCR and vision-language models on the five scans and the training documents (the test set was only scored, never used to choose):
 
-| OCR + language model | Test | Train (7 usable) |
+| OCR + language model | Test (original labels) | Train (7 usable) |
 |---|---:|---:|
 | OvisOCR3 + Qwen3-4B-Instruct | 87.5% | 64.3% |
 | GLM-OCR + Qwen3-4B-Instruct | 87.5% | 66.7% |
@@ -81,7 +81,7 @@ Almost all training misses are data problems (see below): impossible labelled en
 | GLM-OCR + Qwen3.5-4B | 87.5% | 71.4% |
 | **GLM-OCR + Qwen3.5-4B, final prompt and name formatting** | **91.7%** | **71.4%** |
 
-The first four rows use the same prompt. The previous version of this repo (Tesseract + Qwen3-4B-Instruct) scored 79.2% on test and 64.3% on train.
+I made this comparison before correcting the two test labels, so the best possible test score here was 91.7%. The first four rows use the same prompt. My first version (Tesseract + Qwen3-4B-Instruct) scored 79.2% on test and 64.3% on train.
 
 - **OCR.** Tesseract drops punctuation inside names ("V.V.Ravi Kian" → "V.V Ravi Kian"), which exact matching punishes. OvisOCR3 fixed that but misread "Kartheek" as "Karthreek". GLM-OCR read every name, date and amount correctly. On the 2550 px scan it gives the same names at 1275 px width in a third of the time and memory.
 - **Language model.** Qwen3.5-4B scored higher than Qwen3-4B-Instruct on the training documents, mostly on names. With the first prompt it named a company's signatory as the tenant; the final prompt asks for the company itself.
@@ -94,7 +94,7 @@ The first four rows use the same prompt. The previous version of this repo (Tess
 - **Unlabelled file.** `46239065` is in `train/` but has no label.
 - **Garbled text.** The `44737744` Word file is itself bad OCR text, and the rent is unreadable ("Rs9.99.7.9°").
 - **Impossible dates.** Some labels have dates that don't exist: 31.04.2011, 31.02.2011, 31.11.2009.
-- **Labels that contradict the document.** The two test cells above.
+- **Test labels that contradict the document.** The two cells above, which I corrected in `test.csv`.
 
 The "7 usable docs" view leaves out the swapped pair and the missing file.
 

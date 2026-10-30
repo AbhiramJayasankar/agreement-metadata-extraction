@@ -4,7 +4,7 @@ from docx import Document
 import pytest
 
 from metadata_extractor.dataset import files_by_stem, read_labels, write_predictions
-from metadata_extractor.evaluate import corrected_test_labels, recall_rows, usable_labels
+from metadata_extractor.evaluate import recall_rows, usable_labels
 from metadata_extractor.fields import CSV_COLUMNS, FACT_KEYS, clean_party, facts_to_fields, format_answer, infer_end_date
 from metadata_extractor.llm import EXAMPLES, parse_json_object, select_examples
 from metadata_extractor.text import extract_text
@@ -178,22 +178,3 @@ def test_image_cache_separates_engines(tmp_path, monkeypatch):
         assert extract_text(path, cache, engine=engine) == engine
         assert (cache / f"scan.{engine}.txt").read_text(encoding="utf-8") == engine
     assert calls == ["glm", "tesseract"]
-
-
-def test_corrected_test_scoring_does_not_change_original_labels():
-    labels = [dict.fromkeys(CSV_COLUMNS, "") | {
-        "File Name": "228094620-Rental-Agreement", "Party Two": ".B.Kishore",
-    }, dict.fromkeys(CSV_COLUMNS, "") | {
-        "File Name": "95980236-Rental-Agreement", "Aggrement End Date": "31.03.2011",
-    }]
-    predictions = [dict(labels[0], **{"Party Two": "B.Kishore"}),
-                   dict(labels[1], **{"Aggrement End Date": "28.02.2011"})]
-    scores, errors = recall_rows(labels, predictions)
-    assert len(errors) == 2
-    assert scores[5]["Recall"] == 0.5
-    assert scores[5]["Lenient Recall"] == 1
-    corrected_scores, corrected_errors = recall_rows(corrected_test_labels(labels), predictions)
-    assert corrected_errors == []
-    assert all(row["Recall"] == 1 for row in corrected_scores)
-    assert labels[0]["Party Two"] == ".B.Kishore"
-    assert labels[1]["Aggrement End Date"] == "31.03.2011"
